@@ -1,0 +1,79 @@
+Parameters:
+  IamInstanceProfile:
+    Type: String
+
+  Message:
+    Type: String
+
+Resources:
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      IamInstanceProfile: !Ref IamInstanceProfile
+      UserData:
+        Fn::Base64:
+          !Sub |
+          #!/bin/bash -xe
+          yum update -y
+          yum upgrade -y
+          /opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2Instance --region ${AWS::Region}
+          /opt/aws/bin/cfn-signal -e $? --stack ${AWS::StackName} --resource EC2Instance --region ${AWS::Region}
+    Metadata:
+      AWS::CloudFormation::Init:
+        config:
+          packages:
+            yum:
+              nginx: []
+          services:
+            systemd:
+              cfn-hup:
+                enabled: true
+                ensureRunning: true
+                files:
+                  - /etc/cfn/cfn-hup.conf
+                  - /etc/cfn/hooks.d/cfn-auto-reloader.conf
+              nginx:
+                enabled: true
+                ensureRunning: true
+          files:
+            /etc/cfn/cfn-hup.conf:
+              mode: "000400"
+              owner: root
+              group: root
+              content: !Sub |
+                [main]
+                stack=${AWS::StackId}
+                region=${AWS::Region}
+                interval=1
+            /etc/cfn/hooks.d/cfn-auto-reloader.conf:
+              content: !Sub |
+                [cfn-auto-reloader-hook]
+                triggers=post.update
+                path=Resources.EC2Instance.Metadata.AWS::CloudFormation::Init
+                action=/opt/aws/bin/cfn-init -v --stack ${AWS::StackName} --resource EC2Instance --region ${AWS::Region}
+                runas=root
+            /usr/share/nginx/html/index.html:
+              mode: "000644"
+              owner: root
+              group: root
+              content: !Sub |
+                <html>
+                <head>
+                  <title>8-ec2-cfn-hup</title>
+                </head>
+                <body>
+                  <h1>${Message}</h1>
+                </body>
+                </html>
+
+
+Outputs:
+  InstanceId:
+    Description: ID of EC2 instance
+    Value: !Ref EC2Instance
+
+  PublicIp:
+    Description: Public IP of EC2 instance
+    Value: !GetAtt EC2Instance.PublicIp
