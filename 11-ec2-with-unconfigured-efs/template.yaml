@@ -1,0 +1,36 @@
+Parameters:
+  IamInstanceProfile:
+    Type: String
+
+
+Resources:
+  EC2SecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: EFS Access via NFS port
+
+  EC2SecurityGroupIngress:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      IpProtocol: tcp
+      FromPort: 2049
+      ToPort: 2049
+      GroupId: !GetAtt EC2SecurityGroup.GroupId
+      SourceSecurityGroupId: !GetAtt EC2SecurityGroup.GroupId
+
+  EC2Instance:
+    Type: AWS::EC2::Instance
+    Properties:
+      InstanceType: t2.micro
+      ImageId: "{{resolve:ssm:/aws/service/ami-amazon-linux-latest/al2023-ami-kernel-default-x86_64}}"
+      IamInstanceProfile: !Ref IamInstanceProfile
+      SecurityGroupIds:
+        - !GetAtt EC2SecurityGroup.GroupId
+      UserData: !Base64 |
+        #!/bin/bash -v
+        yum update -y
+        yum upgrade -y
+        yum install -y amazon-efs-utils 
+
+  EFSFileSystem:
+    Type: AWS::EFS::FileSystem
